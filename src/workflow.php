@@ -13,6 +13,22 @@ function can_act_on_approval(string $userName, array $approval): bool
     return $approval['u_approval_group'] !== '' && in_array($approval['u_approval_group'], user_groups($userName), true);
 }
 
+/** Separation of duties, admins included: no approving your own request, no approving two steps of one request. */
+function sod_violation(string $userName, array $approval): ?string
+{
+    $ritm = rec_get('sc_req_item', $approval['sysapproval']);
+    if ($ritm && in_array(user_sys_id($userName), [$ritm['opened_by'], $ritm['requested_for']], true)) {
+        return 'You cannot approve your own request';
+    }
+    $others = rec_query('sysapproval_approver', "sysapproval={$approval['sysapproval']}^state=approved^sys_id!={$approval['sys_id']}")[0];
+    foreach ($others as $o) {
+        if ($o['sys_updated_by'] === $userName) {
+            return "You already approved the {$o['u_step']} step of this request";
+        }
+    }
+    return null;
+}
+
 function group_id(string $name): string
 {
     return rec_first('sys_user_group', 'name=' . $name)['sys_id'] ?? '';

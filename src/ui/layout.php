@@ -29,7 +29,7 @@ function pending_approvals_for(string $user): array
 {
     $mine = [];
     foreach (rec_query('sysapproval_approver', 'state=requested^ORDERBYsys_created_on')[0] as $a) {
-        if (can_act_on_approval($user, $a)) {
+        if (can_act_on_approval($user, $a) && !sod_violation($user, $a)) {
             $mine[] = $a;
         }
     }

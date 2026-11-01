@@ -109,7 +109,13 @@ function br_pac_rule_before(string $op, array &$r, ?array $old, string $user): v
 
 function br_approval_before(string $op, array &$a, ?array $old, string $user): void
 {
-    if ($op === 'insert' || $user === 'system' || is_admin($user)) {
+    if ($op === 'insert' || $user === 'system') {
+        return;
+    }
+    if ($old['state'] !== $a['state'] && $a['state'] === 'approved' && ($why = sod_violation($user, $a))) {
+        throw new BusinessRuleException($why);
+    }
+    if (is_admin($user)) {
         return;
     }
     if ($old['state'] !== $a['state']) {
