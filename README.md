@@ -77,16 +77,13 @@ writes the credentials and runs PAC Sync. By hand:
 
 ```powershell
 cd ..\pac-sync
-.venv\Scripts\pac-sync setup --profile mock --non-interactive   # once: config\config.yaml + .env (demo OAuth client)
-.venv\Scripts\pac-sync --config config\config.mock.yaml doctor
-.venv\Scripts\pac-sync --config config\config.mock.yaml run
+.venv\Scripts\pac-sync setup --profile demo   # once: config\config.yaml + .env (asks for the ZIA credentials)
+.venv\Scripts\pac-sync doctor
+.venv\Scripts\pac-sync run
 ```
 
-`config/config.demo.yaml` points the same mock at a real ZIA tenant (prefixed PAC files, see the PAC Sync README, "Demo on a real tenant").
-
-`config/config.mock.yaml` is local only: it reads this mock over OAuth, deploys to a **simulated ZIA**
-(`zscaler.target: simulated`, files in `..\pac-sync\sim-zia\`), keeps the history in `..\pac-sync\pac-history-mock\`
-and never pushes. EMEA and APAC are `auto`, NA is `stage`; the first run creates the three PAC files in the simulator.
+`config/config.demo.yaml` points this mock at a real ZIA tenant (prefixed `demo-` PAC files, history in ZIA; see the PAC Sync
+README, "Demo on a real tenant"). EMEA and APAC are `auto`, NA is `stage`.
 The credentials come from `..\pac-sync\.env` (`SNOW_CLIENT_ID=pac-sync`, `SNOW_CLIENT_SECRET=pac-sync-secret`), so no
 `$env:` exports are needed.
 
