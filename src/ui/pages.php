@@ -432,7 +432,7 @@ function page_approvals(string $method, ?string $id): void
         return;
     }
     $pending = pending_approvals_for($user);
-    [$done] = rec_query('sysapproval_approver', "sys_updated_by=$user^stateINapproved,rejected^ORDERBYDESCsys_updated_on", 20);
+    [$done] = rec_query('sysapproval_approver', "u_approved_by=$user^state=approved^NQsys_updated_by=$user^state=rejected^ORDERBYDESCsys_updated_on", 20);
     ob_start(); ?>
     <h1>My Approvals</h1>
     <?php if (!$pending): ?><div class="card empty">Nothing waiting for you. Switch user (top right) to act as another approver.</div><?php endif; ?>

@@ -113,7 +113,7 @@ function br_approval_before(string $op, array &$a, ?array $old, string $user): v
         return;
     }
     foreach (['sysapproval', 'approver', 'u_approval_group', 'u_approved_by'] as $f) {
-        if ($a[$f] !== $old[$f]) {
+        if (($a[$f] ?? '') !== ($old[$f] ?? '')) { // NULL = '' (rows from before a column was added)
             throw new BusinessRuleException("$f cannot be changed after the approval is created");
         }
     }
@@ -123,14 +123,12 @@ function br_approval_before(string $op, array &$a, ?array $old, string $user): v
     if ($old['state'] !== $a['state'] && $a['state'] === 'approved' && ($why = sod_violation($user, $a))) {
         throw new BusinessRuleException($why);
     }
-    if (is_admin($user)) {
-        return;
-    }
     if ($old['state'] !== $a['state']) {
+        // Admins included: otherwise an admin could mark an approved step not_required and approve the next one too.
         if ($old['state'] !== 'requested' || !in_array($a['state'], ['approved', 'rejected'], true)) {
             throw new BusinessRuleException('Only a requested approval can be approved or rejected');
         }
-        if (!can_act_on_approval($user, $a)) {
+        if (!is_admin($user) && !can_act_on_approval($user, $a)) {
             throw new BusinessRuleException('You are not an approver for this step');
         }
         if ($a['state'] === 'rejected' && trim($a['comments']) === '') {

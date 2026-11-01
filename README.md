@@ -65,6 +65,11 @@ waiting for Mark Manager.
 Business rules apply to the UI and the API alike. The integration account can change only `u_deploy_*` and the allowed
 `u_state` transitions. Everyone except PAC admins changes rules only through the catalog item.
 
+**Separation of duties**, admins included: nobody approves their own request or two steps of the same request, and
+an approval only moves from `requested` to `approved` or `rejected`. Who approved is recorded once in `u_approved_by`.
+The routing fields (`sysapproval`, `approver`, `u_approval_group`) are read-only after creation. PAC admins are trusted
+operators: in the backend they can still create or move a rule straight to `approved`, outside the catalog flow.
+
 ## Use with PAC Sync
 
 The quickest path is `..\pac-sync\start-poc.cmd` (see the PAC Sync README, "Quick start"): it starts this mock,

@@ -62,6 +62,27 @@ try {
         $moved = false;
     }
     check(!$moved, 'sysapproval cannot be changed after insert');
+
+    // Bypass (c): an admin cannot retire an approved step to approve the next one alone.
+    $steps = request_by('jdoe');
+    approve('admin', $steps[0]);
+    try {
+        rec_update('sysapproval_approver', $steps[0]['sys_id'], ['state' => 'not_required'], 'admin');
+        $retired = true;
+    } catch (BusinessRuleException $e) {
+        $retired = false;
+    }
+    check(!$retired, 'admin cannot move an approved step to not_required');
+
+    // Rows from before u_approved_by existed hold NULL; saving the form (which posts '') must still work.
+    db()->exec("UPDATE sysapproval_approver SET u_approved_by = NULL WHERE sys_id = '{$steps[1]['sys_id']}'");
+    try {
+        rec_update('sysapproval_approver', $steps[1]['sys_id'], ['comments' => 'x', 'u_approved_by' => ''], 'admin');
+        $saved = true;
+    } catch (BusinessRuleException $e) {
+        $saved = false;
+    }
+    check($saved, 'NULL u_approved_by (pre-migration row) saves as empty');
 } finally {
     db()->rollBack();
 }
