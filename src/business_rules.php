@@ -112,6 +112,14 @@ function br_approval_before(string $op, array &$a, ?array $old, string $user): v
     if ($op === 'insert' || $user === 'system') {
         return;
     }
+    foreach (['sysapproval', 'approver', 'u_approval_group', 'u_approved_by'] as $f) {
+        if ($a[$f] !== $old[$f]) {
+            throw new BusinessRuleException("$f cannot be changed after the approval is created");
+        }
+    }
+    if ($old['state'] !== $a['state'] && $a['state'] === 'approved') {
+        $a['u_approved_by'] = $user;
+    }
     if ($old['state'] !== $a['state'] && $a['state'] === 'approved' && ($why = sod_violation($user, $a))) {
         throw new BusinessRuleException($why);
     }

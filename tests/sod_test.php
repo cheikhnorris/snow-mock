@@ -45,6 +45,23 @@ try {
     rec_update('sysapproval_approver', $steps[1]['sys_id'], ['state' => 'requested'], 'system');
     check(str_starts_with(approve('admin', rec_get('sysapproval_approver', $steps[1]['sys_id'])), 'You already approved'),
         'same person cannot approve step 2');
+
+    // Bypass (a): a later write by someone else (comments) must not hide who approved step 1.
+    $steps = request_by('jdoe');
+    approve('admin', $steps[0]);
+    rec_update('sysapproval_approver', $steps[0]['sys_id'], ['comments' => 'edited'], 'mmanager');
+    rec_update('sysapproval_approver', $steps[1]['sys_id'], ['state' => 'requested'], 'system');
+    check(str_starts_with(approve('admin', rec_get('sysapproval_approver', $steps[1]['sys_id'])), 'You already approved'),
+        'comment edit by another user does not free the approver');
+    // Bypass (b): moving the approval to another request after approving is refused.
+    $other = request_by('jdoe');
+    try {
+        rec_update('sysapproval_approver', $steps[0]['sys_id'], ['sysapproval' => $other[0]['sysapproval']], 'admin');
+        $moved = true;
+    } catch (BusinessRuleException $e) {
+        $moved = false;
+    }
+    check(!$moved, 'sysapproval cannot be changed after insert');
 } finally {
     db()->rollBack();
 }

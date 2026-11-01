@@ -22,7 +22,7 @@ function sod_violation(string $userName, array $approval): ?string
     }
     $others = rec_query('sysapproval_approver', "sysapproval={$approval['sysapproval']}^state=approved^sys_id!={$approval['sys_id']}")[0];
     foreach ($others as $o) {
-        if ($o['sys_updated_by'] === $userName) {
+        if ($o['u_approved_by'] === $userName) {
             return "You already approved the {$o['u_step']} step of this request";
         }
     }

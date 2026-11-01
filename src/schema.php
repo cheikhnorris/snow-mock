@@ -119,6 +119,7 @@ function schema(): array
                     'choices' => ['not_yet_requested' => 'Not yet requested', 'requested' => 'Requested', 'approved' => 'Approved',
                         'rejected' => 'Rejected', 'not_required' => 'No longer required']],
                 'comments' => ['type' => 'text', 'label' => 'Comments'],
+                'u_approved_by' => ['type' => 'string', 'label' => 'Approved by'], // write-once, set by the business rule
             ],
         ],
         'change_request' => [
