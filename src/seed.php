@@ -79,6 +79,50 @@ function seed_demo_data(): void
         ], 'system', $sys + ['created_on' => $at('-' . (40 - $i) . ' days')]);
     }
 
+    $c = [];
+    foreach ([['partner-sites', 'allow', 'Partner portals'], ['risky-tools', 'block', 'File-sharing and tunnelling tools'],
+                 ['review-sites', 'caution', 'Public review sites']] as [$name, $action, $desc]) {
+        $c[$name] = rec_insert('u_url_category', ['u_name' => $name, 'u_action' => $action, 'u_description' => $desc,
+            'u_active' => 'true'], 'system', $sys)['sys_id'];
+    }
+    foreach ([
+        ['partner-sites', '.partner-example.com', 'approved', '', '', 'Partner portals must stay reachable', 'App Team A', 'pending'],
+        ['partner-sites', 'tools.example.net/upload', 'approved', '', '', 'Partner upload endpoint', 'App Team A', 'pending'],
+        ['risky-tools', 'tunnel.example.org', 'deployed', '', '', 'Block tunnelling tool', 'Network Team', 'deployed'],
+        ['review-sites', 'reviews.example.com', 'deployed', '', '-10 days', 'Temporary access to a review site', 'Workplace Team', 'deployed'],
+        ['risky-tools', 'old-share.example.net', 'retire_requested', '', '', 'Service shut down', 'Workplace Team', 'deployed'],
+    ] as $i => [$cat, $value, $state, $from, $to, $why, $group, $deploy]) {
+        rec_insert('u_url_rule', [
+            'short_description' => 'URL ' . $value, 'u_category' => $c[$cat], 'u_value' => $value, 'u_state' => $state,
+            'u_valid_from' => $from ? $at($from) : '', 'u_valid_to' => $to ? $at($to) : '',
+            'u_justification' => $why, 'u_owner_group' => $g[$group], 'u_requested_for' => $u['jdoe'], 'u_deploy_status' => $deploy,
+        ], 'system', $sys + ['created_on' => $at('-' . (30 - $i) . ' days')]);
+    }
+    $fp = [];
+    foreach ([['partner-direct', 'direct', '', 'Partner traffic that bypasses the gateway'],
+                 ['partner-egress', 'proxychain', 'PARTNER-EGRESS-GW', 'Partner traffic through the partner egress gateway']] as [$name, $method, $gw, $desc]) {
+        $fp[$name] = rec_insert('u_fwd_profile', ['u_name' => $name, 'u_forward_method' => $method, 'u_proxy_gateway' => $gw,
+            'u_description' => $desc, 'u_active' => 'true'], 'system', $sys)['sys_id'];
+    }
+    foreach ([
+        ['partner-direct', 'host_exact', 'portal.partner-example.com', 'approved', 'Partner portal goes direct', 'App Team A', 'pending'],
+        ['partner-egress', 'ip_cidr', '203.0.113.0/24', 'approved', 'Partner network needs the egress gateway', 'Network Team', 'pending'],
+        ['partner-direct', 'host_exact', 'old-portal.partner-example.com', 'deployed', 'Previous partner portal', 'App Team A', 'deployed'],
+        ['partner-egress', 'host_exact', 'retired-api.partner-example.com', 'retire_requested', 'API shut down', 'Workplace Team', 'deployed'],
+    ] as $i => [$prof, $mt, $value, $state, $why, $group, $deploy]) {
+        rec_insert('u_fwd_rule', [
+            'short_description' => 'FWD ' . $value, 'u_profile' => $fp[$prof], 'u_match_type' => $mt, 'u_value' => $value, 'u_state' => $state,
+            'u_justification' => $why, 'u_owner_group' => $g[$group], 'u_requested_for' => $u['jdoe'], 'u_deploy_status' => $deploy,
+        ], 'system', $sys + ['created_on' => $at('-' . (20 - $i) . ' days')]);
+    }
+    // Open forwarding request, waiting for Mark Manager.
+    submit_fwd_request(['request_type' => 'new', 'u_profile' => $fp['partner-direct'], 'u_match_type' => 'host_exact',
+        'u_value' => 'files.partner-example.com', 'u_owner_group' => $g['App Team A'], 'u_justification' => 'Partner file exchange'], 'jdoe');
+
+    // Open URL request, waiting for Mark Manager.
+    submit_url_request(['request_type' => 'new', 'u_category' => $c['review-sites'], 'u_value' => 'ratings.example.org',
+        'u_owner_group' => $g['App Team A'], 'u_justification' => 'Procurement compares supplier ratings'], 'jdoe');
+
     // One open request, waiting for Mark Manager (step 1 of 2).
     submit_pac_request([
         'request_type' => 'new', 'u_action' => 'proxy', 'u_match_type' => 'host_exact',

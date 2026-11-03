@@ -45,6 +45,14 @@ function page_catalog_index(): void
         <h2>Request PAC exception</h2>
         <p>Network &gt; Proxy. New, modify, extend or retire a PAC file rule. Approved by your group manager and Network Security (and CAB for global rules).</p>
       </a>
+      <a class="tile" href="/catalog/fwd">
+        <h2>Request forwarding exception</h2>
+        <p>Network &gt; Forwarding. Send a host or IP network DIRECT or through a proxy gateway, or retire an entry. Approved by your group manager and Network Security.</p>
+      </a>
+      <a class="tile" href="/catalog/url">
+        <h2>Request URL filtering exception</h2>
+        <p>Network &gt; Web. Allow, caution or block a URL in a ZIA URL category, or retire an entry. Approved by your group manager and Network Security.</p>
+      </a>
     </section>
     <?php render_page('Service Catalog', ob_get_clean(), 'catalog');
 }
@@ -241,6 +249,148 @@ function page_catalog_pac(string $method): void
     <?php render_page('Request PAC exception', ob_get_clean(), 'catalog');
 }
 
+/** Catalog form of a use-case rule table: u_url_rule (/catalog/url) or u_fwd_rule (/catalog/fwd). */
+function page_catalog_url(string $method, string $table = 'u_url_rule'): void
+{
+    $user = current_user();
+    [, , $grp, $title] = USE_CASE_TABLES[$table];
+    $fwd = $table === 'u_fwd_rule';
+    $path = $fwd ? '/catalog/fwd' : '/catalog/url';
+    $form = ['request_type' => $_GET['type'] ?? 'new', 'target_rule' => $_GET['rule'] ?? '', 'u_match_type' => 'host_exact'];
+    $error = null;
+    if ($method === 'POST') {
+        $form = $_POST;
+        try {
+            $ritm = submit_use_case_request($form, $user, $table);
+            flash('success', "Request {$ritm['number']} submitted. It now waits for approval.");
+            redirect('/ritm/' . $ritm['sys_id']);
+            return;
+        } catch (BusinessRuleException $e) {
+            $error = $e->getMessage();
+        }
+    }
+    $groupsOf = rec_query($fwd ? 'u_fwd_profile' : 'u_url_category', 'u_active=true^ORDERBYu_name')[0];
+    $groups = rec_query('sys_user_group', 'ORDERBYname')[0];
+    $targets = targetable_url_rules($table);
+    $v = fn(string $k) => h($form[$k] ?? '');
+    $sel = fn(string $k, string $val) => (($form[$k] ?? '') === $val) ? 'selected' : '';
+    ob_start(); ?>
+    <div class="breadcrumb"><a href="/catalog">Service Catalog</a> › Network › <?= $fwd ? 'Forwarding' : 'Web' ?></div>
+    <form class="card catalog" method="post" action="<?= $path ?>" novalidate>
+      <h1><?= h($title) ?></h1>
+      <p class="lead"><?= $fwd ? 'Send a host or IP network DIRECT or through a proxy gateway (<code>portal.example.com</code>, <code>203.0.113.0/24</code>), or retire an existing entry.'
+          : 'Add a URL (<code>example.com</code>, <code>.example.com</code> or <code>example.com/path</code>) to a URL category, or retire an existing entry.' ?></p>
+      <?php if ($error): ?><div class="flash error"><strong>Please fix the following:</strong><br><?= nl2br(h($error)) ?></div><?php endif; ?>
+      <fieldset>
+        <legend>What do you need?</legend>
+        <div class="field">
+          <select name="request_type">
+            <option value="new" <?= $sel('request_type', 'new') ?>>New entry</option>
+            <option value="retire" <?= $sel('request_type', 'retire') ?>>Retire an entry</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="target_rule">Existing entry (retire only)</label>
+          <select name="target_rule" id="target_rule">
+            <option value="">-- Select an entry --</option>
+            <?php foreach ($targets as $t): ?>
+              <option value="<?= h($t['sys_id']) ?>" <?= $sel('target_rule', $t['sys_id']) ?>><?= h($t['number'] . ' | ' . $t['u_value'] . ' (' . display_value($table, $grp, $t[$grp]) . ')') ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Entry (new only)</legend>
+        <div class="grid2">
+          <div class="field">
+            <label for="<?= $grp ?>"><?= $fwd ? 'Forwarding profile' : 'URL category' ?> <span class="req">*</span></label>
+            <select name="<?= $grp ?>" id="<?= $grp ?>">
+              <option value="">-- Select --</option>
+              <?php foreach ($groupsOf as $c): ?>
+                <option value="<?= h($c['sys_id']) ?>" <?= $sel($grp, $c['sys_id']) ?>><?= h($c['u_name']) ?> (<?= h($fwd ? $c['u_forward_method'] : $c['u_action']) ?>)</option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php if ($fwd): ?>
+          <div class="field">
+            <label for="u_match_type">Match type <span class="req">*</span></label>
+            <select name="u_match_type" id="u_match_type">
+              <?php foreach (table_def($table)['fields']['u_match_type']['choices'] as $k => $label): ?>
+                <option value="<?= h($k) ?>" <?= $sel('u_match_type', $k) ?>><?= h($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php endif; ?>
+          <div class="field">
+            <label for="u_value"><?= $fwd ? 'Value' : 'URL' ?> <span class="req">*</span></label>
+            <input name="u_value" id="u_value" value="<?= $v('u_value') ?>" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="u_valid_from">Valid from (UTC)</label>
+            <input type="datetime-local" name="u_valid_from" id="u_valid_from" value="<?= $v('u_valid_from') ?>">
+          </div>
+          <div class="field">
+            <label for="u_valid_to">Valid to (UTC)</label>
+            <input type="datetime-local" name="u_valid_to" id="u_valid_to" value="<?= $v('u_valid_to') ?>">
+          </div>
+          <div class="field">
+            <label for="u_owner_group">Owner group <span class="req">*</span></label>
+            <select name="u_owner_group" id="u_owner_group">
+              <option value="">-- Select --</option>
+              <?php foreach ($groups as $g): ?>
+                <option value="<?= h($g['sys_id']) ?>" <?= $sel('u_owner_group', $g['sys_id']) ?>><?= h($g['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Why?</legend>
+        <div class="field">
+          <label for="u_justification">Business justification <span class="req">*</span></label>
+          <textarea name="u_justification" id="u_justification" rows="3"><?= $v('u_justification') ?></textarea>
+        </div>
+      </fieldset>
+      <div class="actions"><button class="btn primary" type="submit">Submit request</button></div>
+    </form>
+    <?php render_page($title, ob_get_clean(), 'catalog');
+}
+
+/** [table, new rule, rule to retire] of a request that targets a use-case rule table, else null. */
+function ritm_use_case(array $ritm): ?array
+{
+    foreach (USE_CASE_TABLES as $table => [$ruleCol, $targetCol]) {
+        if (!empty($ritm[$ruleCol]) || !empty($ritm[$targetCol])) {
+            return [$table, !empty($ritm[$ruleCol]) ? rec_get($table, $ritm[$ruleCol]) : null,
+                !empty($ritm[$targetCol]) ? rec_get($table, $ritm[$targetCol]) : null];
+        }
+    }
+    return null;
+}
+
+function url_rule_summary(?array $rule, string $table = 'u_url_rule'): string
+{
+    if (!$rule) {
+        return '';
+    }
+    $fwd = $table === 'u_fwd_rule';
+    $rows = [
+        'Rule' => '<a href="/form/' . $table . '/' . h($rule['sys_id']) . '">' . h($rule['number']) . '</a> ' . state_pill($table, 'u_state', $rule['u_state'])
+            . ' ' . state_pill($table, 'u_deploy_status', $rule['u_deploy_status']),
+        $fwd ? 'Destination' : 'URL' => ($fwd ? h(display_value($table, 'u_match_type', $rule['u_match_type'])) . ': ' : '') . '<code>' . h($rule['u_value'])
+            . '</code> in ' . h($fwd ? display_value($table, 'u_profile', $rule['u_profile']) : display_value($table, 'u_category', $rule['u_category'])),
+        'Validity' => h(($rule['u_valid_from'] ?: 'now') . ' → ' . ($rule['u_valid_to'] ?: 'permanent')),
+    ];
+    if ($rule['u_deploy_version'] || $rule['u_deploy_message']) {
+        $rows['Deployment'] = h(trim($rule['u_deploy_version'] . ' ' . $rule['u_deployed_on'] . ' ' . $rule['u_deploy_message']));
+    }
+    $out = '<dl class="summary">';
+    foreach ($rows as $k => $v) {
+        $out .= "<dt>$k</dt><dd>$v</dd>";
+    }
+    return $out . '</dl>';
+}
+
 function page_requests(): void
 {
     $user = current_user();
@@ -360,7 +510,10 @@ function page_ritm(string $id): void
     $approvals = rec_query('sysapproval_approver', "sysapproval=$id^ORDERBYorder")[0];
     $rule = $ritm['u_pac_rule'] ? rec_get('u_pac_rule', $ritm['u_pac_rule']) : null;
     $target = $ritm['u_target_rule'] ? rec_get('u_pac_rule', $ritm['u_target_rule']) : null;
-    $keys = array_filter([$id, $ritm['u_pac_rule'], $ritm['u_target_rule'], ...array_column($approvals, 'sys_id')]);
+    [$ucTable, $urlRule, $urlTarget] = ritm_use_case($ritm) ?? ['u_url_rule', null, null];
+    $keys = array_filter([$id, $ritm['u_pac_rule'], $ritm['u_target_rule'], $ritm['u_url_rule'] ?? '', $ritm['u_target_url_rule'] ?? '',
+        $ritm['u_fwd_rule'] ?? '', $ritm['u_target_fwd_rule'] ?? '',
+        ...array_column($approvals, 'sys_id')]);
     $activity = rec_query('sys_audit', 'documentkeyIN' . implode(',', $keys) . '^fieldname!=record^ORDERBYDESCsys_created_on', 60)[0];
     $vars = json_decode($ritm['variables'] ?: '{}', true) ?: [];
     ob_start(); ?>
@@ -382,6 +535,8 @@ function page_ritm(string $id): void
         </dl>
         <?php if ($rule): ?><h3><?= $target ? 'New rule' : 'Rule' ?></h3><?= rule_summary($rule) ?><?php endif; ?>
         <?php if ($target): ?><h3><?= $ritm['u_request_type'] === 'retire' ? 'Rule to retire' : 'Replaces' ?></h3><?= rule_summary($target) ?><?php endif; ?>
+        <?php if ($urlRule): ?><h3>Use-case rule</h3><?= url_rule_summary($urlRule, $ucTable) ?><?php endif; ?>
+        <?php if ($urlTarget): ?><h3>Rule to retire</h3><?= url_rule_summary($urlTarget, $ucTable) ?><?php endif; ?>
       </section>
       <section class="card">
         <h2>Approvals</h2>
@@ -395,7 +550,13 @@ function page_ritm(string $id): void
               <?php if ($a['comments']): ?><blockquote><?= nl2br(h($a['comments'])) ?></blockquote><?php endif; ?>
             </li>
           <?php endforeach; ?>
+          <?php if ($urlRule || $urlTarget): $ur = $ritm['u_request_type'] === 'retire' ? $urlTarget : $urlRule; ?>
+            <li class="<?= $ritm['state'] === 'closed_complete' ? 'approved' : 'requested' ?>"><div><strong>PAC Sync deployment</strong>
+              <?= $ritm['approval'] === 'approved' ? state_pill($ucTable, 'u_deploy_status', $ur['u_deploy_status']) : '' ?></div>
+              <?php if ($ur['u_deploy_message'] !== ''): ?><div class="muted"><?= h($ur['u_deploy_message']) ?></div><?php endif; ?></li>
+          <?php else: ?>
           <?= deployment_step($ritm, $ritm['u_request_type'] === 'retire' ? $target : $rule, $approvals) ?>
+          <?php endif; ?>
         </ol>
       </section>
     </div>
@@ -440,6 +601,7 @@ function page_approvals(string $method, ?string $id): void
         $ritm = rec_get('sc_req_item', $a['sysapproval']);
         $rule = $ritm['u_pac_rule'] ? rec_get('u_pac_rule', $ritm['u_pac_rule']) : null;
         $target = $ritm['u_target_rule'] ? rec_get('u_pac_rule', $ritm['u_target_rule']) : null;
+        [$ucTable, $urlRule, $urlTarget] = ritm_use_case($ritm) ?? ['u_url_rule', null, null];
         $vars = json_decode($ritm['variables'] ?: '{}', true) ?: []; ?>
       <section class="card approval">
         <div class="page-head">
@@ -449,8 +611,10 @@ function page_approvals(string $method, ?string $id): void
         <p class="muted">Requested by <?= h(display_value('sc_req_item', 'requested_for', $ritm['requested_for'])) ?> on <?= h($ritm['sys_created_on']) ?>.
           Justification: <?= h($vars['u_justification'] ?? '') ?></p>
         <div class="grid2">
-          <div><?php if ($rule): ?><h3>Rule</h3><?= rule_summary($rule) ?><?php endif; ?></div>
-          <div><?php if ($target): ?><h3><?= $ritm['u_request_type'] === 'retire' ? 'Rule to retire' : 'Replaces' ?></h3><?= rule_summary($target) ?><?php endif; ?></div>
+          <div><?php if ($rule): ?><h3>Rule</h3><?= rule_summary($rule) ?><?php endif; ?>
+            <?php if ($urlRule): ?><h3>Use-case rule</h3><?= url_rule_summary($urlRule, $ucTable) ?><?php endif; ?></div>
+          <div><?php if ($target): ?><h3><?= $ritm['u_request_type'] === 'retire' ? 'Rule to retire' : 'Replaces' ?></h3><?= rule_summary($target) ?><?php endif; ?>
+            <?php if ($urlTarget): ?><h3>Rule to retire</h3><?= url_rule_summary($urlTarget, $ucTable) ?><?php endif; ?></div>
         </div>
         <form method="post" action="/approvals/<?= h($a['sys_id']) ?>" class="decision">
           <textarea name="comments" rows="2" placeholder="Comments (required to reject)"></textarea>
@@ -505,6 +669,10 @@ SNOW_CLIENT_SECRET=<?= h($client['secret']) ?></pre>
           <tr><td>u_pac_region</td><td>yes</td><td>no</td><td>no</td></tr>
           <tr><td>u_pac_proxy_profile</td><td>yes</td><td>no</td><td>no</td></tr>
           <tr><td>u_pac_rule</td><td>yes</td><td>u_deploy_*, u_state (approved→deployed/retired, deployed→retired, retire_requested→retired)</td><td>no</td></tr>
+          <tr><td>u_url_category</td><td>yes</td><td>no</td><td>no</td></tr>
+          <tr><td>u_url_rule</td><td>yes</td><td>u_deploy_*, u_state (same transitions as u_pac_rule)</td><td>no</td></tr>
+          <tr><td>u_fwd_profile</td><td>yes</td><td>no</td><td>no</td></tr>
+          <tr><td>u_fwd_rule</td><td>yes</td><td>u_deploy_*, u_state (same transitions as u_pac_rule)</td><td>no</td></tr>
           <tr><td>u_pac_deployment</td><td>yes</td><td>no</td><td>yes</td></tr>
         </table>
       </section>
@@ -542,7 +710,7 @@ function page_pacsync(): void
     // Per region: its newest row, because a later run of another region must not hide that this one is still not activated.
     $lastByRegion = [];
     foreach ($regions as $reg) {
-        $lastByRegion[$reg['sys_id']] = rec_query('u_pac_deployment', 'u_region=' . $reg['sys_id'] . '^ORDERBYDESCsys_created_on', 1)[0][0] ?? null;
+        $lastByRegion[$reg['sys_id']] = rec_query('u_pac_deployment', 'u_region=' . $reg['sys_id'] . '^u_use_caseNOT INurl_filtering,forwarding^ORDERBYDESCsys_created_on', 1)[0][0] ?? null;
     }
     $notActivated = [];
     foreach ($regions as $reg) {
@@ -561,7 +729,7 @@ function page_pacsync(): void
       <thead><tr><th>Region</th><th>PAC (base name)</th><th>Deployed</th><th>Staged</th><th>Last run</th><th>Status</th><th>Summary</th></tr></thead>
       <tbody>
       <?php foreach ($regions as $reg):
-          $rows = rec_query('u_pac_deployment', 'u_region=' . $reg['sys_id'] . '^ORDERBYDESCsys_created_on', 50)[0];
+          $rows = rec_query('u_pac_deployment', 'u_region=' . $reg['sys_id'] . '^u_use_caseNOT INurl_filtering,forwarding^ORDERBYDESCsys_created_on', 50)[0];
           $dep = $stg = $last = null;
           foreach ($rows as $row) {
               $last ??= $row;
@@ -590,6 +758,45 @@ function page_pacsync(): void
       <?php foreach ($failed as $r): ?>
         <tr><td><a href="/form/u_pac_rule/<?= h($r['sys_id']) ?>"><?= h($r['number']) ?></a></td>
           <td><?= state_pill('u_pac_rule', 'u_state', $r['u_state']) ?></td>
+          <td><code><?= h($r['u_value']) ?></code></td><td><?= nl2br(h($r['u_deploy_message'])) ?></td></tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    <?php endif; ?>
+    <?php // ZIA policy: newest row per (use case, object), from the u_pac_deployment rows PAC Sync logs for URL filtering and forwarding.
+    $policy = [];
+    foreach (rec_query('u_pac_deployment', 'u_use_caseINurl_filtering,forwarding^ORDERBYDESCsys_created_on', 500)[0] as $row) {
+        $policy[$row['u_use_case'] . '/' . $row['u_object']] ??= $row;
+    }
+    $failedUrl = [];
+    foreach (['u_url_rule', 'u_fwd_rule'] as $t) {
+        foreach (rec_query($t, 'u_deploy_status=failed^ORDERBYnumber')[0] as $row) {
+            $failedUrl[] = $row + ['_table' => $t];
+        }
+    } ?>
+    <h2>ZIA policy <small>URL filtering and forwarding objects</small></h2>
+    <?php if (!$policy): ?><div class="card empty">No run yet.</div><?php else: ?>
+    <table class="list compact">
+      <thead><tr><th>Use case</th><th>Object</th><th>Last run</th><th>Status</th><th>Summary</th></tr></thead>
+      <tbody>
+      <?php foreach ($policy as $row): ?>
+        <tr><td><?= h(display_value('u_pac_deployment', 'u_use_case', $row['u_use_case'])) ?></td>
+          <td><code><?= h($row['u_object']) ?></code></td>
+          <td><a href="/form/u_pac_deployment/<?= h($row['sys_id']) ?>"><?= h($row['number']) ?></a> <span class="muted"><?= h($row['u_finished'] ?: $row['sys_created_on']) ?></span></td>
+          <td><?= state_pill('u_pac_deployment', 'u_status', $row['u_status']) ?></td>
+          <td><code><?= h(trim(strtok($row['u_summary'], "\n"))) ?></code></td></tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    <?php endif; ?>
+    <h2>URL and forwarding rules PAC Sync marked failed</h2>
+    <?php if (!$failedUrl): ?><div class="card empty">None.</div><?php else: ?>
+    <table class="list compact">
+      <thead><tr><th>Rule</th><th>State</th><th>Value</th><th>Message</th></tr></thead>
+      <tbody>
+      <?php foreach ($failedUrl as $r): ?>
+        <tr><td><a href="/form/<?= h($r['_table']) ?>/<?= h($r['sys_id']) ?>"><?= h($r['number']) ?></a></td>
+          <td><?= state_pill($r['_table'], 'u_state', $r['u_state']) ?></td>
           <td><code><?= h($r['u_value']) ?></code></td><td><?= nl2br(h($r['u_deploy_message'])) ?></td></tr>
       <?php endforeach; ?>
       </tbody>

@@ -44,6 +44,8 @@ API passwords are in `config.php` (`admin/admin`, `svc_pac_sync/svc_pac_sync_pw`
 | --- | --- |
 | `/` | Portal home: catalog tile, my requests, my approvals, rules by state |
 | `/catalog/pac` | Catalog item: new, modify, extend or retire a rule, with client-side show/hide and server-side validation |
+| `/catalog/url` | Catalog item: new entry or retire an entry of a URL filtering rule (ZIA URL category) |
+| `/catalog/fwd` | Catalog item: new entry or retire an entry of a forwarding rule (ZIA forwarding control) |
 | `/requests`, `/ritm/{sys_id}` | Requested items with approval timeline, rule summary and activity |
 | `/approvals` | Approve or reject (a comment is required to reject) |
 | `/list/{table}` | Backend list view with encoded-query filter, sorting and paging |
@@ -69,6 +71,28 @@ Business rules apply to the UI and the API alike. The integration account can ch
 an approval only moves from `requested` to `approved` or `rejected`. Who approved is recorded once in `u_approved_by`.
 The routing fields (`sysapproval`, `approver`, `u_approval_group`) are read-only after creation. PAC admins are trusted
 operators: in the backend they can still create or move a rule straight to `approved`, outside the catalog flow.
+
+## URL filtering (ZIA use case)
+
+Tables (field names are the contract with PAC Sync, `src/schema.php`):
+
+- `u_url_category` (admin-owned, display `u_name`): `u_name` (`^[a-z0-9][a-z0-9-]{0,25}$`), `u_action` (`allow|caution|block`), `u_description`, `u_active`. PAC admins edit it.
+- `u_url_rule` (prefix `URLR`): `u_category`, `u_value` (URL entry), `u_state`, `u_valid_from`/`u_valid_to`, `u_justification`, `u_owner_group`, `u_change_request`, `u_requested_for`, `u_replaces` and the `u_deploy_*` integration fields.
+- `u_pac_deployment` also has `u_use_case` (`pac|url_filtering|forwarding`, empty = pac) and `u_object`; `sc_req_item` has `u_url_rule` and `u_target_url_rule`.
+
+An entry is a host or `.domain` with an optional path (`.partner-example.com`, `tools.example.net/upload`): no scheme, port, query or wildcard, at least two labels, not a public suffix. The same live entry in two rules is refused (`Duplicate of` in the same category, `Conflicts with` in another; the rule being replaced is ignored).
+Workflow: `/catalog/url` (types new and retire) -> owner group manager -> Network security -> `approved` (or `retire_requested`); PAC Sync then deploys and the request closes.
+The integration account reads both tables, writes `u_url_rule` (`u_deploy_*` and the same `u_state` transitions as `u_pac_rule`) and creates `u_pac_deployment` rows. `/pacsync` shows the per-region cards from PAC rows only, then a **ZIA policy** table (newest row per use case and object) and the failed URL rules.
+Table API calls: `GET u_url_category?sysparm_query=u_active=true`, `GET u_url_rule?sysparm_query=u_stateINapproved,deployed,retire_requested^ORDERBYnumber`, `PATCH u_url_rule/{sys_id}`, `POST u_pac_deployment`.
+An existing database gets the new tables and columns at the next start (`ensure_schema`); the seed data (3 categories, 5 rules, 1 open request) loads only on a fresh database ("Reset demo data").
+
+## Traffic forwarding (ZIA use case)
+
+- `u_fwd_profile` (admin-owned, display `u_name`): `u_name` (object-name rule), `u_forward_method` (`direct|proxychain`), `u_proxy_gateway` (mandatory for `proxychain`, empty for `direct`; 1 to 128 printable ASCII characters without `"` or `\`), `u_description`, `u_active`. PAC admins edit it.
+- `u_fwd_rule` (prefix `FWDR`): `u_profile`, `u_match_type` (`host_exact|ip_cidr`, validated like the PAC rules), `u_value`, and the same state, date, justification, owner and `u_deploy_*` fields as `u_url_rule`. The same live destination in two rules is refused (`Duplicate of` in the same profile, `Conflicts with` in another).
+- `sc_req_item` has `u_fwd_rule` and `u_target_fwd_rule`. Workflow: `/catalog/fwd` (new and retire) -> owner group manager -> Network security; ACLs and `u_state` transitions are the same as for `u_url_rule`.
+- Table API: `GET u_fwd_profile?sysparm_query=u_active=true`, `GET u_fwd_rule?sysparm_query=u_stateINapproved,deployed,retire_requested^ORDERBYnumber`, `PATCH u_fwd_rule/{sys_id}`; deployment rows use `u_use_case=forwarding`. The `/pacsync` ZIA policy table and failed-rules list include forwarding.
+- Seed: profiles `partner-direct` (direct) and `partner-egress` (proxychain, `PARTNER-EGRESS-GW`), 4 rules (`portal.partner-example.com`, `203.0.113.0/24`, one deployed, one retire requested) and one open request.
 
 ## Use with PAC Sync
 
@@ -135,7 +159,7 @@ To restore, stop the server, copy a snapshot over `data\snow.sqlite`, then start
 config.php            instance name, OAuth clients, seed passwords, allowed_clients
 public/index.php      front controller / router for php -S (loopback guard first)
 src/client_guard.php  loopback / allowed_clients check
-tests/                client_guard_test.php
+tests/                client_guard_test.php, url_rule_test.php, fwd_rule_test.php
 public/assets/        style.css, catalog.js (catalog client scripts)
 src/schema.php        table dictionary (fields, types, choices, references)
 src/db.php, repo.php  SQLite storage, CRUD with business rules and sys_audit

@@ -11,7 +11,7 @@ function can_edit_table(string $user, string $table): bool
     if (is_admin($user)) {
         return true;
     }
-    return is_pac_admin($user) && in_array($table, ['u_pac_rule', 'u_pac_proxy_profile', 'change_request'], true);
+    return is_pac_admin($user) && in_array($table, ['u_pac_rule', 'u_pac_proxy_profile', 'u_url_category', 'u_fwd_profile', 'change_request'], true);
 }
 
 function page_list(string $table): void
@@ -217,6 +217,10 @@ function related_lists(string $table, string $id): void
 {
     match ($table) {
         'u_pac_rule' => related_list('Requests', 'sc_req_item', "u_pac_rule=$id^ORu_target_rule=$id^ORDERBYDESCnumber"),
+        'u_url_category' => related_list('URL rules', 'u_url_rule', "u_category=$id"),
+        'u_url_rule' => related_list('Requests', 'sc_req_item', "u_url_rule=$id^ORu_target_url_rule=$id^ORDERBYDESCnumber"),
+        'u_fwd_profile' => related_list('Forwarding rules', 'u_fwd_rule', "u_profile=$id"),
+        'u_fwd_rule' => related_list('Requests', 'sc_req_item', "u_fwd_rule=$id^ORu_target_fwd_rule=$id^ORDERBYDESCnumber"),
         'sc_req_item' => related_list('Approvals', 'sysapproval_approver', "sysapproval=$id^ORDERBYorder"),
         'u_pac_region' => related_list('Deployments', 'u_pac_deployment', "u_region=$id^ORDERBYDESCsys_created_on"),
         'sys_user_group' => related_list('Members', 'sys_user_grmember', "group=$id"),
@@ -259,6 +263,10 @@ function ui_route(string $path, string $method): void
             page_home();
         } elseif ($r === 'catalog' && ($seg[1] ?? '') === 'pac') {
             page_catalog_pac($method);
+        } elseif ($r === 'catalog' && ($seg[1] ?? '') === 'url') {
+            page_catalog_url($method);
+        } elseif ($r === 'catalog' && ($seg[1] ?? '') === 'fwd') {
+            page_catalog_url($method, 'u_fwd_rule');
         } elseif ($r === 'catalog') {
             page_catalog_index();
         } elseif ($r === 'requests') {

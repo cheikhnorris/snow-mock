@@ -4,6 +4,8 @@
 const DEPLOY_FIELDS = ['u_deploy_status', 'u_deploy_version', 'u_deploy_message', 'u_deployed_on'];
 const CONTENT_FIELDS = ['u_action', 'u_match_type', 'u_value', 'u_proxy_profile', 'u_scope', 'u_regions', 'u_priority',
     'u_valid_from', 'u_valid_to', 'u_change_request', 'u_owner_group', 'u_justification'];
+const FWD_CONTENT_FIELDS = ['u_profile', 'u_match_type', 'u_value', 'u_valid_from', 'u_valid_to', 'u_change_request', 'u_owner_group', 'u_justification'];
+const URL_CONTENT_FIELDS = ['u_category', 'u_value', 'u_valid_from', 'u_valid_to', 'u_change_request', 'u_owner_group', 'u_justification'];
 
 // Allowed u_state transitions for people (PAC admins and the workflow bypass this through "system").
 const RULE_TRANSITIONS = [
@@ -25,7 +27,9 @@ const INTEGRATION_TRANSITIONS = [
 function br_before(string $table, string $op, array &$new, ?array $old, string $user): void
 {
     match ($table) {
-        'u_pac_rule' => br_pac_rule_before($op, $new, $old, $user),
+        'u_pac_rule', 'u_url_rule', 'u_fwd_rule' => br_pac_rule_before($op, $new, $old, $user, $table),
+        'u_url_category' => validate_url_category($new),
+        'u_fwd_profile' => validate_fwd_profile($new),
         'u_pac_proxy_profile' => validate_proxy_profile($new),
         'sysapproval_approver' => br_approval_before($op, $new, $old, $user),
         'sys_user', 'sys_user_group', 'sys_user_grmember', 'u_pac_region', 'change_request'
@@ -37,8 +41,8 @@ function br_before(string $table, string $op, array &$new, ?array $old, string $
 
 function br_after(string $table, string $op, array $new, ?array $old, string $user): void
 {
-    if ($table === 'u_pac_rule' && $old && $new['u_state'] !== $old['u_state']) {
-        close_requests_for_rule($new);
+    if (in_array($table, ['u_pac_rule', 'u_url_rule', 'u_fwd_rule'], true) && $old && $new['u_state'] !== $old['u_state']) {
+        close_requests_for_rule($new, $table);
     }
     if ($table === 'sysapproval_approver' && $old && $new['state'] !== $old['state']) {
         approval_state_changed($new);
@@ -52,8 +56,9 @@ function br_admin_only(string $table, string $user): void
     }
 }
 
-function br_pac_rule_before(string $op, array &$r, ?array $old, string $user): void
+function br_pac_rule_before(string $op, array &$r, ?array $old, string $user, string $table = 'u_pac_rule'): void
 {
+    $isUrl = $table !== 'u_pac_rule'; // use-case rule table (URL filtering or forwarding)
     $system = $user === 'system';
     $integration = is_integration($user);
     $pacAdmin = is_pac_admin($user);
@@ -72,9 +77,9 @@ function br_pac_rule_before(string $op, array &$r, ?array $old, string $user): v
 
     if ($integration) {
         if ($op === 'insert') {
-            throw new BusinessRuleException('The integration account cannot create PAC rules');
+            throw new BusinessRuleException('The integration account cannot create rules');
         }
-        foreach (array_keys(table_def('u_pac_rule')['fields']) as $f) {
+        foreach (array_keys(table_def($table)['fields']) as $f) {
             if ($changed($f) && !in_array($f, [...DEPLOY_FIELDS, 'u_state'], true)) {
                 throw new BusinessRuleException("The integration account cannot change $f");
             }
@@ -87,7 +92,8 @@ function br_pac_rule_before(string $op, array &$r, ?array $old, string $user): v
 
     if (!$system && !$pacAdmin) {
         if ($op === 'update') {
-            throw new BusinessRuleException('PAC rules are changed through the catalog item "Request PAC exception"');
+            throw new BusinessRuleException($table === 'u_url_rule' ? 'URL filtering rules are changed through the catalog item "Request URL filtering exception"'
+                : ($table === 'u_fwd_rule' ? 'Forwarding rules are changed through the catalog item "Request forwarding exception"' : 'PAC rules are changed through the catalog item "Request PAC exception"'));
         }
     }
     if (!$system && $changed('u_state') && !in_array($r['u_state'], RULE_TRANSITIONS[$old['u_state']] ?? [], true)) {
@@ -95,15 +101,19 @@ function br_pac_rule_before(string $op, array &$r, ?array $old, string $user): v
     }
 
     $contentChanged = $op === 'insert';
-    foreach (CONTENT_FIELDS as $f) {
+    foreach (['u_url_rule' => URL_CONTENT_FIELDS, 'u_fwd_rule' => FWD_CONTENT_FIELDS][$table] ?? CONTENT_FIELDS as $f) {
         $contentChanged = $contentChanged || $changed($f);
     }
     $reactivated = $changed('u_state') && in_array($old['u_state'], ['draft', 'rejected'], true);
     if (($contentChanged || $reactivated) && !in_array($r['u_state'], ['retired', 'rejected'], true)) {
-        validate_pac_rule($r, $old);
+        match ($table) {
+            'u_url_rule' => validate_url_rule($r, $old),
+            'u_fwd_rule' => validate_fwd_rule($r, $old),
+            default => validate_pac_rule($r, $old),
+        };
     }
     if ($r['short_description'] === '' && $r['u_value'] !== '') {
-        $r['short_description'] = strtoupper($r['u_action']) . ' ' . $r['u_value'];
+        $r['short_description'] = $isUrl ? ($table === 'u_url_rule' ? 'URL ' : 'FWD ') . $r['u_value'] : strtoupper($r['u_action']) . ' ' . $r['u_value'];
     }
 }
 

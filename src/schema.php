@@ -178,6 +178,75 @@ function schema(): array
             ],
         ],
     ];
+    // ZIA use case: URL filtering. Rules share state, date, justification and deploy fields with u_pac_rule.
+    $p = $schema['u_pac_rule']['fields'];
+    $schema['u_url_category'] = [
+        'label' => 'URL Category', 'display' => 'u_name', 'group' => 'PAC Management',
+        'list' => ['u_name', 'u_action', 'u_description', 'u_active'],
+        'fields' => [
+            'u_name' => ['type' => 'string', 'label' => 'Name', 'mandatory' => true],
+            'u_action' => ['type' => 'choice', 'label' => 'Action', 'mandatory' => true,
+                'choices' => ['allow' => 'Allow', 'caution' => 'Caution', 'block' => 'Block']],
+            'u_description' => ['type' => 'string', 'label' => 'Description'],
+            'u_active' => ['type' => 'boolean', 'label' => 'Active', 'default' => 'true'],
+        ],
+    ];
+    $schema['u_url_rule'] = [
+        'label' => 'URL Filtering Rule', 'display' => 'number', 'prefix' => 'URLR', 'group' => 'PAC Management',
+        'list' => ['number', 'u_category', 'u_value', 'u_state', 'u_deploy_status', 'u_valid_to'],
+        'fields' => [
+            'number' => $p['number'],
+            'short_description' => $p['short_description'],
+            'u_category' => ['type' => 'reference', 'label' => 'URL category', 'ref' => 'u_url_category', 'mandatory' => true],
+            'u_value' => ['type' => 'string', 'label' => 'URL entry', 'mandatory' => true],
+            'u_state' => $p['u_state'],
+            'u_valid_from' => $p['u_valid_from'],
+            'u_valid_to' => $p['u_valid_to'],
+            'u_justification' => $p['u_justification'],
+            'u_owner_group' => $p['u_owner_group'],
+            'u_change_request' => $p['u_change_request'],
+            'u_requested_for' => $p['u_requested_for'],
+            'u_replaces' => ['type' => 'reference', 'label' => 'Replaces rule', 'ref' => 'u_url_rule'],
+            'u_deploy_status' => $p['u_deploy_status'],
+            'u_deploy_version' => $p['u_deploy_version'],
+            'u_deploy_message' => $p['u_deploy_message'],
+            'u_deployed_on' => $p['u_deployed_on'],
+        ],
+    ];
+    // ZIA use case: traffic forwarding.
+    $schema['u_fwd_profile'] = [
+        'label' => 'Forwarding Profile', 'display' => 'u_name', 'group' => 'PAC Management',
+        'list' => ['u_name', 'u_forward_method', 'u_proxy_gateway', 'u_description', 'u_active'],
+        'fields' => [
+            'u_name' => ['type' => 'string', 'label' => 'Name', 'mandatory' => true],
+            'u_forward_method' => ['type' => 'choice', 'label' => 'Forward method', 'mandatory' => true,
+                'choices' => ['direct' => 'Direct', 'proxychain' => 'Proxy chain']],
+            'u_proxy_gateway' => ['type' => 'string', 'label' => 'Proxy gateway'],
+            'u_description' => ['type' => 'string', 'label' => 'Description'],
+            'u_active' => ['type' => 'boolean', 'label' => 'Active', 'default' => 'true'],
+        ],
+    ];
+    $schema['u_fwd_rule'] = $schema['u_url_rule'];
+    $schema['u_fwd_rule']['label'] = 'Forwarding Rule';
+    $schema['u_fwd_rule']['prefix'] = 'FWDR';
+    $schema['u_fwd_rule']['list'] = ['number', 'u_profile', 'u_match_type', 'u_value', 'u_state', 'u_deploy_status', 'u_valid_to'];
+    $f = $schema['u_fwd_rule']['fields'];
+    unset($f['u_category']);
+    $f['u_replaces']['ref'] = 'u_fwd_rule';
+    $schema['u_fwd_rule']['fields'] = array_merge(
+        array_slice($f, 0, 2, true),
+        ['u_profile' => ['type' => 'reference', 'label' => 'Forwarding profile', 'ref' => 'u_fwd_profile', 'mandatory' => true],
+         'u_match_type' => ['type' => 'choice', 'label' => 'Match type', 'mandatory' => true,
+             'choices' => ['host_exact' => 'Host (exact)', 'ip_cidr' => 'IP network (CIDR)']]],
+        array_slice($f, 2, null, true));
+    $schema['u_fwd_rule']['fields']['u_value']['label'] = 'Value';
+    $schema['u_pac_deployment']['fields']['u_use_case'] = ['type' => 'choice', 'label' => 'Use case', 'default' => 'pac',
+        'choices' => ['pac' => 'PAC', 'url_filtering' => 'URL filtering', 'forwarding' => 'Traffic forwarding']];
+    $schema['u_pac_deployment']['fields']['u_object'] = ['type' => 'string', 'label' => 'ZIA object'];
+    $schema['sc_req_item']['fields']['u_url_rule'] = ['type' => 'reference', 'label' => 'URL rule', 'ref' => 'u_url_rule'];
+    $schema['sc_req_item']['fields']['u_target_url_rule'] = ['type' => 'reference', 'label' => 'Target URL rule', 'ref' => 'u_url_rule'];
+    $schema['sc_req_item']['fields']['u_fwd_rule'] = ['type' => 'reference', 'label' => 'Forwarding rule', 'ref' => 'u_fwd_rule'];
+    $schema['sc_req_item']['fields']['u_target_fwd_rule'] = ['type' => 'reference', 'label' => 'Target forwarding rule', 'ref' => 'u_fwd_rule'];
     return $schema;
 }
 

@@ -81,11 +81,11 @@ function api_acl(string $op, string $table, string $user): bool
     if (is_admin($user)) {
         return true;
     }
-    $pacTables = ['u_pac_rule', 'u_pac_region', 'u_pac_proxy_profile', 'u_pac_deployment'];
+    $pacTables = ['u_pac_rule', 'u_pac_region', 'u_pac_proxy_profile', 'u_pac_deployment', 'u_url_category', 'u_url_rule', 'u_fwd_profile', 'u_fwd_rule'];
     if (is_integration($user)) {
         return match ($op) {
             'read' => in_array($table, $pacTables, true),
-            'write' => $table === 'u_pac_rule',
+            'write' => in_array($table, ['u_pac_rule', 'u_url_rule', 'u_fwd_rule'], true),
             'create' => $table === 'u_pac_deployment',
             default => false,
         };
